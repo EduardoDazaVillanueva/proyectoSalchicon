@@ -13,7 +13,6 @@ public class SteamLobby : MonoBehaviour
         Application.targetFrameRate = 60;
         networkManager = GetComponent<NetworkManager>();
 
-        // Suscribirnos a los eventos del sistema de Lobbies de Steam
         SteamMatchmaking.OnLobbyCreated += OnLobbyCreated;
         SteamMatchmaking.OnLobbyEntered += OnLobbyEntered;
         SteamFriends.OnGameLobbyJoinRequested += OnGameLobbyJoinRequested;
@@ -21,22 +20,40 @@ public class SteamLobby : MonoBehaviour
 
     private void Update()
     {
-        // Facepunch requiere que actualicemos los callbacks frecuentemente
         SteamClient.RunCallbacks();
     }
 
     private void OnDestroy()
     {
-        // Desuscribirnos para evitar errores de memoria al cerrar
         SteamMatchmaking.OnLobbyCreated -= OnLobbyCreated;
         SteamMatchmaking.OnLobbyEntered -= OnLobbyEntered;
         SteamFriends.OnGameLobbyJoinRequested -= OnGameLobbyJoinRequested;
     }
 
-    // Esta función la conectaremos a tu futuro botón de "Crear Partida" en la UI
+    // ==========================================
+    // ESTE ES EL NUEVO HUD EXCLUSIVO PARA STEAM
+    // ==========================================
+    private void OnGUI()
+    {
+        // Si no estamos conectados a nada, mostramos el botón de crear partida
+        if (networkManager.mode == NetworkManagerMode.Offline)
+        {
+            if (GUI.Button(new Rect(10, 10, 220, 30), "Hostear Partida (Steam Lobby)"))
+            {
+                HostLobby();
+            }
+        }
+        else
+        {
+            // Si ya estamos conectados, mostramos un texto
+            GUI.Label(new Rect(10, 10, 300, 30), "Conectado. Presiona Shift+Tab para invitar.");
+        }
+    }
+
     public async void HostLobby()
     {
-        // Creamos un lobby con capacidad para 4 jugadores (puedes cambiar este número)
+        Debug.Log("Creando Lobby en Steam...");
+        // Creamos un lobby público/amigos para 4 personas
         await SteamMatchmaking.CreateLobbyAsync(4);
     }
 
@@ -48,35 +65,30 @@ public class SteamLobby : MonoBehaviour
             return;
         }
 
-        // Si el lobby se crea bien, iniciamos Mirror como Host (Servidor + Cliente)
+        // Solo cuando Steam confirma el lobby, encendemos Mirror
         networkManager.StartHost();
-
-        // Guardamos nuestro SteamID como metadata para que los invitados sepan a quién conectarse
         lobby.SetData(HostAddressKey, SteamClient.SteamId.ToString());
         lobby.SetJoinable(true);
 
-        Debug.Log("Lobby creado exitosamente. Ya puedes invitar amigos por Steam.");
+        Debug.Log("Lobby creado con éxito. Ya puedes invitar amigos.");
     }
 
     private async void OnGameLobbyJoinRequested(Lobby lobby, SteamId friendId)
     {
-        // Este evento se dispara cuando estás en el menú de Steam, un amigo te invita y le das a "Jugar"
-        Debug.Log("Aceptaste la invitación de: " + friendId);
+        Debug.Log("Aceptando la invitación de: " + friendId);
+        // Nos unimos al lobby de Steam al aceptar la invitación
         await lobby.Join();
     }
 
     private void OnLobbyEntered(Lobby lobby)
     {
-        // Si somos el Host, no hacemos nada porque ya estamos conectados
         if (networkManager.mode == NetworkManagerMode.Host) return;
 
-        // Extraemos el SteamID del Host de la metadata del lobby
+        // Sacamos la ID del Host y conectamos Mirror a él
         string hostAddress = lobby.GetData(HostAddressKey);
-        
-        // Le decimos a Mirror que se conecte a ese usuario
         networkManager.networkAddress = hostAddress;
         networkManager.StartClient();
 
-        Debug.Log("Uniéndose a la partida del Host...");
+        Debug.Log("Uniéndose a la partida del amigo...");
     }
 }
