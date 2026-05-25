@@ -7,6 +7,9 @@ public class SteamLobby : MonoBehaviour
 {
     private NetworkManager networkManager;
     private const string HostAddressKey = "HostAddress";
+    
+    // Nueva variable para guardar la sala actual y poder interactuar con ella desde la UI
+    private Lobby? currentLobby; 
 
     private void Start()
     {
@@ -30,12 +33,8 @@ public class SteamLobby : MonoBehaviour
         SteamFriends.OnGameLobbyJoinRequested -= OnGameLobbyJoinRequested;
     }
 
-    // ==========================================
-    // ESTE ES EL NUEVO HUD EXCLUSIVO PARA STEAM
-    // ==========================================
     private void OnGUI()
     {
-        // Si no estamos conectados a nada, mostramos el botón de crear partida
         if (networkManager.mode == NetworkManagerMode.Offline)
         {
             if (GUI.Button(new Rect(10, 10, 220, 30), "Hostear Partida (Steam Lobby)"))
@@ -45,15 +44,24 @@ public class SteamLobby : MonoBehaviour
         }
         else
         {
-            // Si ya estamos conectados, mostramos un texto
-            GUI.Label(new Rect(10, 10, 300, 30), "Conectado. Presiona Shift+Tab para invitar.");
+            GUI.Label(new Rect(10, 10, 300, 30), "Conectado. Esperando jugadores...");
+
+            // NUEVA MEJORA DE UX: Botón directo para invitar amigos
+            // Solo lo mostramos si somos el anfitrión y la sala ya existe
+            if (networkManager.mode == NetworkManagerMode.Host && currentLobby.HasValue)
+            {
+                if (GUI.Button(new Rect(10, 50, 220, 30), "Invitar Amigos a la Sala"))
+                {
+                    // Esto fuerza a Steam a abrir el Overlay directamente en la ventana de invitaciones
+                    SteamFriends.OpenGameInviteOverlay(currentLobby.Value.Id);
+                }
+            }
         }
     }
 
     public async void HostLobby()
     {
         Debug.Log("Creando Lobby en Steam...");
-        // Creamos un lobby público/amigos para 4 personas
         await SteamMatchmaking.CreateLobbyAsync(4);
     }
 
@@ -65,18 +73,24 @@ public class SteamLobby : MonoBehaviour
             return;
         }
 
-        // Solo cuando Steam confirma el lobby, encendemos Mirror
         networkManager.StartHost();
+        
+        // LA SOLUCIÓN AL PROBLEMA: 
+        // Cambiamos la visibilidad para que Steam habilite el botón derecho de "Invitar a jugar"
+        lobby.SetFriendsOnly(); // (También podrías usar lobby.SetPublic())
+        
         lobby.SetData(HostAddressKey, SteamClient.SteamId.ToString());
         lobby.SetJoinable(true);
 
-        Debug.Log("Lobby creado con éxito. Ya puedes invitar amigos.");
+        // Guardamos la sala en nuestra variable para que el botón de la UI sepa a dónde invitar
+        currentLobby = lobby;
+
+        Debug.Log("Lobby creado. El botón de invitar ya está activo en Steam.");
     }
 
     private async void OnGameLobbyJoinRequested(Lobby lobby, SteamId friendId)
     {
         Debug.Log("Aceptando la invitación de: " + friendId);
-        // Nos unimos al lobby de Steam al aceptar la invitación
         await lobby.Join();
     }
 
@@ -84,7 +98,6 @@ public class SteamLobby : MonoBehaviour
     {
         if (networkManager.mode == NetworkManagerMode.Host) return;
 
-        // Sacamos la ID del Host y conectamos Mirror a él
         string hostAddress = lobby.GetData(HostAddressKey);
         networkManager.networkAddress = hostAddress;
         networkManager.StartClient();
