@@ -10,10 +10,6 @@ public class SteamLobby : MonoBehaviour
 
     private Lobby? currentLobby;
 
-    [Header("UI")]
-    public GameObject mainMenuPanel;   // Panel con todos los botones del menú
-    public GameObject inviteButton;    // Botón "Invitar amigos"
-
     private void Start()
     {
         Application.targetFrameRate = 60;
@@ -23,10 +19,6 @@ public class SteamLobby : MonoBehaviour
         SteamMatchmaking.OnLobbyCreated += OnLobbyCreated;
         SteamMatchmaking.OnLobbyEntered += OnLobbyEntered;
         SteamFriends.OnGameLobbyJoinRequested += OnGameLobbyJoinRequested;
-
-        // Estado inicial UI
-        if (inviteButton != null)
-            inviteButton.SetActive(false);
     }
 
     private void Update()
@@ -42,43 +34,21 @@ public class SteamLobby : MonoBehaviour
     }
 
     // =========================
-    // BOTONES UI
+    // LOBBY HOST
     // =========================
 
     public async void HostLobby()
     {
         Debug.Log("Creando Lobby...");
 
-        await SteamMatchmaking.CreateLobbyAsync(4);
-
-        // 👇 OCULTAR MENÚ Y MOSTRAR INVITAR
-        if (mainMenuPanel != null)
-            mainMenuPanel.SetActive(false);
-
-        if (inviteButton != null)
-            inviteButton.SetActive(true);
-    }
-
-    public void InviteFriends()
-    {
-        if (networkManager.mode == NetworkManagerMode.Host && currentLobby.HasValue)
+        try
         {
-            SteamFriends.OpenGameInviteOverlay(currentLobby.Value.Id);
+            await SteamMatchmaking.CreateLobbyAsync(4);
         }
-    }
-
-    public void OpenSteamFriendsList()
-    {
-        SteamFriends.OpenOverlay("friends");
-    }
-
-    public void QuitGame()
-    {
-#if UNITY_EDITOR
-        UnityEditor.EditorApplication.isPlaying = false;
-#else
-        Application.Quit();
-#endif
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Error creando lobby: {e.Message}");
+        }
     }
 
     // =========================
@@ -101,10 +71,14 @@ public class SteamLobby : MonoBehaviour
         lobby.SetData(HostAddressKey, SteamClient.SteamId.ToString());
 
         currentLobby = lobby;
+
+        Debug.Log("Lobby creado correctamente.");
     }
 
     private async void OnGameLobbyJoinRequested(Lobby lobby, SteamId friendId)
     {
+        Debug.Log($"Invitación recibida de: {friendId}");
+
         await lobby.Join();
     }
 
@@ -113,6 +87,37 @@ public class SteamLobby : MonoBehaviour
         if (networkManager.mode == NetworkManagerMode.Host)
             return;
 
+        Debug.Log("Uniéndose a la partida...");
+
         networkManager.StartClient();
+    }
+
+    // =========================
+    // PUBLIC API (para otros scripts)
+    // =========================
+
+    public bool IsHost()
+    {
+        return networkManager != null &&
+               networkManager.mode == NetworkManagerMode.Host;
+    }
+
+    public bool HasLobby()
+    {
+        return currentLobby.HasValue;
+    }
+
+    public ulong GetLobbyId()
+    {
+        return currentLobby.Value.Id;
+    }
+
+    public void LeaveLobby()
+    {
+        if (currentLobby.HasValue)
+        {
+            currentLobby.Value.Leave();
+            currentLobby = null;
+        }
     }
 }
